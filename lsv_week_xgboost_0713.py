@@ -6,7 +6,9 @@ from dateutil.relativedelta import relativedelta
 from numpy import loadtxt
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error as mse
 from sklearn.metrics import accuracy_score
+from eval_metrics import *
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -177,9 +179,7 @@ def show_detail(predict_result, raw_result):
     print('中值滤波 ,年均销量 ', np.mean(
         raw_result), '中位数 ', median_error, ' 均方误差 ', RMSE, ' 平均数 ', average_error, ' 最大值 ', max_error, ' 最小值 ', min_error, \
     '5%以内占比 ', _5_error, '20%以内占比 ', _20_error, '50%以内占比 ', _50_error)
-    temp = [router_name, u'中值滤波', np.mean(raw_result), median_error, RMSE, average_error, max_error,
-            min_error, _5_error, _20_error, _50_error]
-    predict_output.append(temp)
+
 
 if __name__ == '__main__':
     path1314 = './data/LSV_order_flow_1314.csv'
@@ -260,6 +260,7 @@ if __name__ == '__main__':
                 # 根据模型 进行预测
                 preds = model.predict(xgtest, ntree_limit=model.best_iteration)
                 print(preds)
+                show_detail(preds,y_test)
 
                 # print(y_train)
     # 设置训练数据和测试数据分割点
