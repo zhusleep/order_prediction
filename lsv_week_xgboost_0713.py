@@ -7,6 +7,8 @@ from numpy import loadtxt
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+import warnings
+warnings.filterwarnings('ignore')
 
 def weekday_workhard():
     w_w = pd.DataFrame([1]*1461, columns=['workhard'], index=pd.date_range('20130101', '20161231') )
@@ -71,6 +73,8 @@ def data_clean(path):
     return order_flow_new.reset_index()
 
 def feature_data(week_sale,year_sale):
+    # 预测目标：这周的销量总和
+    current_week_sale = week_sale
     # 对输入数据转化为相应的特征数据
     # 特征集：{前一周销量，前二周销量，前四周销量，当月第几周，上月销量，去年当月销量，过去4周销量方差，过去两个月销量同比，上周末销量}
     # 前一周销量的和
@@ -153,6 +157,7 @@ def feature_data(week_sale,year_sale):
             temp.append(None)
     last_weekends_sale = temp
     feature_pd = pd.DataFrame(index=sales_week.index)
+    feature_pd['current_week_sale'] = current_week_sale
     feature_pd['one_week_before'] = one_week_before
     feature_pd['two_week_before'] = two_week_before
     feature_pd['four_week_before'] = four_week_before
@@ -163,6 +168,18 @@ def feature_data(week_sale,year_sale):
     feature_pd['increase_last_two_month'] = increase_last_two_month
     feature_pd['last_weekends_sale'] = last_weekends_sale
     return feature_pd
+
+def show_detail(predict_result, raw_result):
+    RMSE = np.sqrt(mse(predict_result, raw_result))
+    # method 1 (P-T)/T
+    median_error, max_error, min_error, average_error, _5_error, _20_error, _50_error = eval_method_1(
+        predict_result, raw_result)
+    print('中值滤波 ,年均销量 ', np.mean(
+        raw_result), '中位数 ', median_error, ' 均方误差 ', RMSE, ' 平均数 ', average_error, ' 最大值 ', max_error, ' 最小值 ', min_error, \
+    '5%以内占比 ', _5_error, '20%以内占比 ', _20_error, '50%以内占比 ', _50_error)
+    temp = [router_name, u'中值滤波', np.mean(raw_result), median_error, RMSE, average_error, max_error,
+            min_error, _5_error, _20_error, _50_error]
+    predict_output.append(temp)
 
 if __name__ == '__main__':
     path1314 = './data/LSV_order_flow_1314.csv'
@@ -219,7 +236,32 @@ if __name__ == '__main__':
             if j.single_route == r:
                 year_sale = j.order['order_flow']
                 feature_pd = feature_data(week_all[r],year_sale)
-                print(feature_pd)
+                # 拆分训练集和测试集
+                # split data into X and y
+                X = feature_pd.iloc[:,1:].values
+                Y = feature_pd.iloc[:,:1].values
+                # split data into train and test sets
+                seed = 7
+                test_size = 0.3
+                X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=seed)
+                # 模型参数
+                # 参数列表 http://xgboost.readthedocs.io/en/latest/parameter.html
+                param = {"booster": "gbtree", "max_depth": 5, "eta": 0.03, "seed": 710, "objective": "reg:linear"
+                         ,"gamma":"0.03"}
+                num_rounds = 500  # 最大迭代次数
+                # 数据转换为DMatrix矩阵 此格式为xgboost接受格式
+                print(y_train)
+                xgtest = xgb.DMatrix(X_test)
+                xgtrain = xgb.DMatrix(X_train, label=y_train)
+                xgeval = xgb.DMatrix(X_test, label=y_test)
+                watchlist = [(xgtrain, 'train'), (xgeval, 'val')]
+                # 进行模型拟合  官方函数列表 http://xgboost.readthedocs.io/en/latest/python/python_api.html
+                model = xgb.train(list(param.items()), xgtrain, num_rounds, watchlist, early_stopping_rounds=100)
+                # 根据模型 进行预测
+                preds = model.predict(xgtest, ntree_limit=model.best_iteration)
+                print(preds)
+
+                # print(y_train)
     # 设置训练数据和测试数据分割点
     #division_point = '2016-01-01'
     #   for
